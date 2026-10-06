@@ -1,7 +1,66 @@
 [project]
 name = "c-core-health"
 version = "0.1.0"
-description = "Add your description here"
+description = "Scene health and re-run API for Holmes SAR processing flows"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "loguru>=0.7.3",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy>=2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+c-core-health = "c_core_health.api.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/c_core_health"]
+
+[tool.ruff]
+line-length = 91
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "I", "B", "RUF", "PTH", "S", "SIM"]
+ignore = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["c_core_health"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S608"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+strict = ["src"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -m 'not live'"
+markers = [
+    "live: read-only smoke tests against the port-forwarded DB and Prefect",
+    "db: tests that need a disposable Postgres container",
+]
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.2",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "respx>=0.23.1",
+    "ruff>=0.16.9",
+    "testcontainers[postgres]>=4.15.0",
+]
