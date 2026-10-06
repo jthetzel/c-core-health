@@ -62,6 +62,10 @@ class Settings(BaseSettings):
 
     host: str = "127.0.0.1"
     port: int = 8000
+    root_path: str = Field(
+        default="",
+        description="URL prefix the gateway strips, e.g. /health; keeps /docs working",
+    )
     log_level: str = "INFO"
     log_json: bool = False
 

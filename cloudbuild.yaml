@@ -1,0 +1,9 @@
+substitutions:
+  _IMAGE: europe-north1-docker.pkg.dev/c-core-iceland/holmes/c-core-health
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}:${SHORT_SHA}", "."]
+
+images:
+  - ${_IMAGE}:${SHORT_SHA}

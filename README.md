@@ -149,6 +149,34 @@ counts still match the preview. It then writes every affected row as JSON Lines 
 preview, the whole transaction rolls back. Re-runs and purges are also appended to
 `CCH_BACKUP_DIR/audit.jsonl`.
 
+### Deployment
+
+The service runs in the `c-core-iceland` GKE cluster (namespace `holmes`) and is served
+at `https://iceland.c-core.app/health/docs` behind IAP. Manifests live in the sibling
+`c-core-cd` repo under `overlays/c-core-iceland/holmes/c-core-health/`; the ArgoCD
+Application is `overlays/c-core-autopilot/argocd/iceland-c-core-health-app.yaml`.
+
+- **Image:** build with Cloud Build, then set `newTag` in the overlay's
+  `kustomization.yaml` to the tag.
+
+  ```sh
+  gcloud builds submit --project ccore-holmes --config cloudbuild.yaml \
+    --substitutions=SHORT_SHA=$(git rev-parse --short=9 HEAD) .
+  ```
+
+- **Config:** the Deployment sets `CCH_PREFECT_API_URL` to the in-cluster Prefect server,
+  `CCH_ENABLE_MUTATIONS=true` and `CCH_ROOT_PATH=/health` (the gateway strips the
+  prefix). `CCH_PG_DSN` and `CCH_API_KEY` come from the SOPS secret
+  `c-core-health-secrets`.
+- **Database:** the service connects as the `c_core_health` role on `holmes-db`. CNPG
+  creates it (`holmes-cluster.yaml`) and a PostSync Job applies the grants in
+  `overlays/c-core-iceland/cloudnative-pg/c-core-health-grants.sql`. It can read the
+  tables in `tables.py` and write only what a purge changes. Update that SQL when
+  `purge.py` starts touching other tables.
+- **Backups:** purge backups and `audit.jsonl` are written to a 5Gi PVC mounted at
+  `/data`. The Deployment uses `Recreate` and one replica because the volume is
+  single-writer.
+
 ### Development
 
 ```sh

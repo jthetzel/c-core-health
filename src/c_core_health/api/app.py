@@ -64,6 +64,7 @@ def create_app(resources: Resources | None = None) -> FastAPI:
         title="c-core-health",
         description="Recent SAR scenes, their Prefect run lineage, re-runs and purges.",
         lifespan=lifespan,
+        root_path=settings.root_path,
     )
     app.add_middleware(
         CORSMiddleware,
