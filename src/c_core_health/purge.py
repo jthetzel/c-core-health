@@ -63,6 +63,29 @@ class PurgeStep:
         return f"{name}.{self.column}" if self.column else name
 
 
+# Tables some deployments don't have (e.g. grouped_targets is absent from c-core-iceland).
+# A missing optional table has no rows to purge, so its steps and counts are skipped.
+OPTIONAL_TABLES = (grouped_targets,)
+
+
+def _qualified_name(table: Table) -> str:
+    return f"{table.schema}.{table.name}"
+
+
+def _missing_optional_tables(conn: Connection) -> set[str]:
+    return {
+        _qualified_name(table)
+        for table in OPTIONAL_TABLES
+        if conn.execute(select(func.to_regclass(_qualified_name(table)))).scalar_one()
+        is None
+    }
+
+
+def _skip_missing_optional(conn: Connection, steps: list[PurgeStep]) -> list[PurgeStep]:
+    missing = _missing_optional_tables(conn)
+    return [step for step in steps if _qualified_name(step.table) not in missing]
+
+
 def _scene_target_ids(ref: SceneRef) -> Select[tuple[int]]:
     return select(targets.c.id).where(
         targets.c.scene_item_id == ref.scene_id,
@@ -193,13 +216,17 @@ def analyst_data_counts(conn: Connection, ref: SceneRef) -> dict[str, int]:
         grouped_targets.c.analyst_confirmed.is_(True)
         | grouped_targets.c.notes.is_not(None)
     )
+    grouped_label = "features.grouped_targets (analyst_confirmed or notes)"
+    grouped_counts = (
+        {}
+        if _qualified_name(grouped_targets) in _missing_optional_tables(conn)
+        else {grouped_label: _count(conn, grouped_targets, reviewed_grouped)}
+    )
     return {
         "features.targets (analyst_confirmed or notes)": _count(
             conn, targets, reviewed_targets
         ),
-        "features.grouped_targets (analyst_confirmed or notes)": _count(
-            conn, grouped_targets, reviewed_grouped
-        ),
+        **grouped_counts,
         "features.annotations (detections, kept but orphaned)": _count(
             conn, annotations, annotated
         ),
@@ -233,7 +260,9 @@ def build_preview(
     allow_analyst_data_loss: bool,
     active_run_ids: Sequence[UUID] = (),
 ) -> PurgePreview:
-    steps = purge_steps(ref, include_ais_messages=include_ais_messages)
+    steps = _skip_missing_optional(
+        conn, purge_steps(ref, include_ais_messages=include_ais_messages)
+    )
     deletes = {
         s.label: _count(conn, s.table, s.where) for s in steps if s.action == "delete"
     }
@@ -361,7 +390,9 @@ def execute_purge(
                 expected=request.expected_deletes,
                 actual=preview.deletes,
             )
-        steps = purge_steps(ref, include_ais_messages=request.include_ais_messages)
+        steps = _skip_missing_optional(
+            conn, purge_steps(ref, include_ais_messages=request.include_ais_messages)
+        )
         manifest = {
             "scene": ref.model_dump(),
             "request": request.model_dump(),
